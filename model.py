@@ -1,20 +1,25 @@
 import pandas as pd
 from keras.models import Sequential, Model
-from keras.layers import Conv1D,Conv2D, MaxPool1D, MaxPool2D,Dense, Dropout, Flatten, \
+from keras.layers import Conv1D,Conv2D, MaxPool1D, InputLayer, MaxPool2D,Dense, Dropout, Flatten, \
 BatchNormalization, Input, concatenate, Activation
 from keras.optimizers import Adam
-from sklearn.preprocessing import MinMaxScaler
+from keras import optimizers
 import numpy as np
 from scipy.ndimage.filters import uniform_filter1d
 
 from flask import Flask, redirect, url_for, request, render_template
 import tensorflow as tf
+from flask_restful import Api
 
-app = Flask(__name__)
+from keras.applications import vgg16
+from keras.models import Model
+
 graph = tf.get_default_graph()
 
-print('Successfully loaded VGG16 model...')
-print('Visit http://127.0.0.1:5000')
+
+# app = Flask(__name__)
+# api = Api(app)
+# print('Visit http://127.0.0.1:5000')
 
 def Load():
     stars = pd.read_csv('exoTrain.csv')
@@ -51,7 +56,6 @@ def Load():
 
     print(x_train.shape[1:])
     print(x_test.shape)
-
 
     return x_train,y_train,x_test,y_test
 
@@ -114,14 +118,37 @@ def CNNtrain():
                                verbose=0, epochs=5,
                                steps_per_epoch=x_train.shape[1] // 32)
 
+def VGG16():
 
-@app.route('/', methods=['GET'])
-def index():
+    x_train,y_train,x_test,y_test = Load()
+    n_timestamps = x_train.shape[0]
+    n_features = x_train.shape[1]
 
-    return render_template('Template\\index.html')
+    vgg = vgg16.VGG16(include_top=False, weights='imagenet',
+                      input_shape=x_train.shape)
 
+    ### Removed the last fully connected neural networks from VGG
+    output = vgg.layers[-1].output
+    vgg_model = Model(vgg.input, output)
+
+    input_shape = vgg_model.output_shape[1]
+
+    model = Sequential()
+    model.add(InputLayer(input_shape=(input_shape,)))
+    model.add(Dense(512, activation='relu', input_dim=input_shape))
+    model.add(Dropout(0.3))
+    model.add(Dense(512, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(1, activation='sigmoid'))
+
+    model.compile(loss='binary_crossentropy',
+                  optimizer=optimizers.RMSprop(lr=1e-4),
+                  metrics=['accuracy'])
+
+    model.summary()
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
-    Load()
-    CNNtrain()
+    # app.run(port=5000, debug=True)
+    # Load()
+    VGG16()
+    # CNNtrain()
